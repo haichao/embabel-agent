@@ -130,7 +130,7 @@ import org.springframework.web.client.RestTemplate
      * Bedrock Models design patterned after Ollama
      */
     @Bean
-    @DependsOn("ollamaModels", "dockerLocalModels", "bedrockModels")
+    @DependsOn("ollamaModels", "dockerLocalModels", "bedrockModels", "volcengineModels")
     fun modelProvider(
         llms: List<Llm>,
         embeddingServices: List<EmbeddingService>,
