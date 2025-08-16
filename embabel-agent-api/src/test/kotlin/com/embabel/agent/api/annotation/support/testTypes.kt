@@ -194,6 +194,16 @@ class OneOperationContextConditionOnly {
 }
 
 @AgentCapabilities
+class OneOperationContextAiOnly {
+
+    @Condition(cost = .5)
+    fun condition1(ai: Ai): Boolean {
+        return true
+    }
+
+}
+
+@AgentCapabilities
 class ConditionFromBlackboard {
 
     @Condition
@@ -379,6 +389,22 @@ class AgentWithCustomName {
 
 }
 
+@Agent(
+    description = "one transformer action only",
+    opaque = true,
+)
+class OpaqueAgent {
+
+    @Action(cost = 500.0)
+    fun toPerson(
+        userInput: UserInput,
+        task: Task,
+    ): PersonWithReverseTool {
+        return PersonWithReverseTool(userInput.content)
+    }
+
+}
+
 
 @Agent(
     description = "one transformer action only",
@@ -389,6 +415,38 @@ class AgentWithOneTransformerActionWith2ArgsOnly {
     fun toPerson(
         userInput: UserInput,
         task: Task,
+    ): PersonWithReverseTool {
+        return PersonWithReverseTool(userInput.content)
+    }
+
+}
+
+@Agent(
+    description = "one transformer action only with ai",
+)
+class AgentWithOneTransformerActionWith2ArgsOnlyAndAiParameter {
+
+    @Action(cost = 500.0)
+    fun toPerson(
+        userInput: UserInput,
+        task: Task,
+        ai: Ai,
+    ): PersonWithReverseTool {
+        return PersonWithReverseTool(userInput.content)
+    }
+
+}
+
+@Agent(
+    description = "one transformer action only with OperationContext",
+)
+class AgentWithOneTransformerActionWith2ArgsOnlyAndOperationContextParameter {
+
+    @Action(cost = 500.0)
+    fun toPerson(
+        userInput: UserInput,
+        task: Task,
+        context: OperationContext,
     ): PersonWithReverseTool {
         return PersonWithReverseTool(userInput.content)
     }
@@ -523,12 +581,24 @@ class FromPersonUsesDomainObjectTools {
 }
 
 @AgentCapabilities
-class FromPersonUsesDomainObjectToolsViaContext {
+class FromPersonUsesDomainObjectToolsViaActionContext {
 
     @Action
     fun fromPerson(
         person: PersonWithReverseTool,
         context: ActionContext,
+    ): UserInput {
+        return context.promptRunner().createObject("Create a UserInput")
+    }
+}
+
+@AgentCapabilities
+class FromPersonUsesDomainObjectToolsViaExecutingOperationContext {
+
+    @Action
+    fun fromPerson(
+        person: PersonWithReverseTool,
+        context: ExecutingOperationContext,
     ): UserInput {
         return context.promptRunner().createObject("Create a UserInput")
     }
@@ -588,6 +658,20 @@ class FromPersonUsesObjectToolsViaContext {
         context: ActionContext,
     ): UserInput {
         return context.promptRunner(toolObjects = listOf(ToolObject(FunnyTool()))).createObject("Create a UserInput")
+    }
+}
+
+@AgentCapabilities
+class FromPersonUsesObjectToolsViaAi {
+
+    @Action
+    fun fromPerson(
+        person: PersonWithReverseTool,
+        ai: Ai,
+    ): UserInput {
+        return ai.withDefaultLlm()
+            .withToolObjects(ToolObject(FunnyTool()))
+            .createObject("Create a UserInput")
     }
 }
 

@@ -248,7 +248,7 @@ class AgentMetadataReaderActionTest {
             outputChannel = DevNullOutputChannel,
         )
         pc.agentProcess.bind(IoBinding.DEFAULT_BINDING, UserInput("John Doe"))
-        val result = action.execute(pc, action)
+        val result = action.execute(pc)
         assertEquals(ActionStatusCode.SUCCEEDED, result.status)
         assertEquals(PersonWithReverseTool("John Doe"), pc.blackboard.lastResult())
     }
@@ -291,7 +291,7 @@ class AgentMetadataReaderActionTest {
             agentProcess = mockAgentProcess,
             outputChannel = DevNullOutputChannel,
         )
-        val result = action.execute(pc, action)
+        val result = action.execute(pc)
         assertEquals(ActionStatusCode.SUCCEEDED, result.status)
         assertEquals(PersonWithReverseTool("John Doe"), pc.blackboard.lastResult())
     }
@@ -329,7 +329,7 @@ class AgentMetadataReaderActionTest {
         )
         pc.blackboard += UserInput("John Doe")
         pc.blackboard += SnakeMeal(emptyList())
-        val result = action.execute(pc, action)
+        val result = action.execute(pc)
         assertEquals(ActionStatusCode.SUCCEEDED, result.status)
         assertEquals(PersonWithReverseTool("John Doe and tasty!"), pc.blackboard.lastResult())
     }
@@ -380,7 +380,7 @@ class AgentMetadataReaderActionTest {
             platformServices = dummyPlatformServices(),
             agentProcess = mockAgentProcess,
         )
-        val result = action.execute(pc, action)
+        val result = action.execute(pc)
         assertEquals(ActionStatusCode.SUCCEEDED, result.status)
         assertEquals(PersonWithReverseTool("John Doe"), pc.blackboard.lastResult())
     }
@@ -417,7 +417,7 @@ class AgentMetadataReaderActionTest {
             platformServices = platformServices,
         )
         pc.blackboard += InternalInput("John Doe")
-        val result = action.execute(pc, action)
+        val result = action.execute(pc)
         assertEquals(ActionStatusCode.SUCCEEDED, result.status)
         assertEquals(InternalOutput("John Doe"), pc.blackboard.lastResult())
     }
@@ -469,7 +469,7 @@ class AgentMetadataReaderActionTest {
             platformServices = dummyPlatformServices(),
             agentProcess = mockAgentProcess,
         )
-        val result = action.execute(pc, action)
+        val result = action.execute(pc)
         assertEquals(ActionStatusCode.SUCCEEDED, result.status)
         assertEquals(PersonWithReverseTool("John Doe"), pc.blackboard.lastResult())
     }
@@ -514,7 +514,52 @@ class AgentMetadataReaderActionTest {
             platformServices = dummyPlatformServices(),
             agentProcess = mockAgentProcess,
         )
-        val result = action.execute(pc, action)
+        val result = action.execute(pc)
+        assertEquals(ActionStatusCode.SUCCEEDED, result.status)
+        assertEquals(PersonWithReverseTool("John Doe"), pc.blackboard.lastResult())
+    }
+
+    @Test
+    fun `transformer action with 2 args invocation and ai parameter`() {
+        val reader = AgentMetadataReader()
+        val metadata = reader.createAgentMetadata(AgentWithOneTransformerActionWith2ArgsOnlyAndAiParameter())
+        assertNotNull(metadata)
+        assertEquals(1, metadata!!.actions.size)
+        val action = metadata.actions.first()
+        val agent = mockk<CoreAgent>()
+        every { agent.jvmTypes } returns listOf(
+            PersonWithReverseTool::class.java,
+            UserInput::class.java
+        ).map { JvmType(it) }
+        val mockAgentProcess = mockk<AgentProcess>()
+        every { mockAgentProcess.agent } returns agent
+        val mockPlatformServices = mockk<PlatformServices>()
+        every { mockPlatformServices.llmOperations } returns mockk()
+        every { mockPlatformServices.eventListener } returns DevNull
+
+        val blackboard = InMemoryBlackboard()
+        blackboard += UserInput("John Doe")
+        blackboard += ("task" to Task("task"))
+        every { mockAgentProcess.getValue(any(), any(), any()) } answers {
+            blackboard.getValue(
+                firstArg(),
+                secondArg(),
+                thirdArg(),
+            )
+        }
+        every { mockAgentProcess.set(any(), any()) } answers {
+            blackboard.set(
+                firstArg(),
+                secondArg(),
+            )
+        }
+        every { mockAgentProcess.lastResult() } returns PersonWithReverseTool("John Doe")
+
+        val pc = ProcessContext(
+            platformServices = dummyPlatformServices(),
+            agentProcess = mockAgentProcess,
+        )
+        val result = action.execute(pc)
         assertEquals(ActionStatusCode.SUCCEEDED, result.status)
         assertEquals(PersonWithReverseTool("John Doe"), pc.blackboard.lastResult())
     }
@@ -636,7 +681,7 @@ class AgentMetadataReaderActionTest {
                 platformServices = mockPlatformServices,
                 agentProcess = mockAgentProcess,
             )
-            val result = action.execute(pc, action)
+            val result = action.execute(pc)
             assertEquals(ActionStatusCode.SUCCEEDED, result.status)
             assertEquals(PersonWithReverseTool("John Doe"), pc.blackboard.lastResult())
             assertEquals(LlmOptions.withModel("magical").withTemperature(.7), llmo.captured.llm)
@@ -691,7 +736,7 @@ class AgentMetadataReaderActionTest {
                 platformServices = mockPlatformServices,
                 agentProcess = mockAgentProcess,
             )
-            val result = action.execute(pc, action)
+            val result = action.execute(pc)
             assertEquals(ActionStatusCode.SUCCEEDED, result.status)
             assertEquals(PersonWithReverseTool("John Doe"), pc.blackboard.lastResult())
 //                assertEquals(1, llmi.captured.toolCallbacks.size)
@@ -705,8 +750,13 @@ class AgentMetadataReaderActionTest {
         }
 
         @Test
-        fun `prompt action invocation with tools on domain object parameter via context`() {
-            testToolsAreExposed(FromPersonUsesDomainObjectToolsViaContext())
+        fun `prompt action invocation with tools on domain object parameter via ActionContext`() {
+            testToolsAreExposed(FromPersonUsesDomainObjectToolsViaActionContext())
+        }
+
+        @Test
+        fun `prompt action invocation with tools on domain object parameter via ExecutingOperationContext`() {
+            testToolsAreExposed(FromPersonUsesDomainObjectToolsViaExecutingOperationContext())
         }
 
         @Test
@@ -717,6 +767,11 @@ class AgentMetadataReaderActionTest {
         @Test
         fun `prompt action invocation with tool object passed in via context`() {
             testToolsAreExposed(FromPersonUsesObjectToolsViaContext(), expectedToolCount = 2)
+        }
+
+        @Test
+        fun `prompt action invocation with tool object passed in via ai`() {
+            testToolsAreExposed(FromPersonUsesObjectToolsViaAi(), expectedToolCount = 2)
         }
 
         @Test
@@ -801,7 +856,7 @@ class AgentMetadataReaderActionTest {
                 platformServices = mockPlatformServices,
                 agentProcess = mockAgentProcess,
             )
-            val result = action.execute(pc, action)
+            val result = action.execute(pc)
             assertEquals(ActionStatusCode.SUCCEEDED, result.status)
             assertTrue(pc.blackboard.lastResult() is UserInput)
             assertEquals("John Doe", (pc.blackboard.lastResult() as UserInput).content)
@@ -863,7 +918,7 @@ class AgentMetadataReaderActionTest {
                 platformServices = mockPlatformServices,
                 agentProcess = mockAgentProcess,
             )
-            val result = action.execute(pc, action)
+            val result = action.execute(pc)
             assertEquals(ActionStatusCode.WAITING, result.status)
             val fr = pc.blackboard.lastResult()
             assertTrue(

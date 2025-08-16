@@ -19,13 +19,16 @@ import com.embabel.agent.api.common.autonomy.AgentProcessExecution
 import com.embabel.agent.domain.library.HasContent
 import com.embabel.common.ai.prompt.PromptContributor
 import com.embabel.common.core.StableIdentified
+import com.embabel.common.core.types.HasInfoString
 import com.embabel.common.core.types.Timestamped
+import com.embabel.common.util.trim
 import java.time.Instant
 
 /**
- * Conversation shim for agent system
+ * Conversation shim for agent system.
+ * Mutable.
  */
-interface Conversation : StableIdentified {
+interface Conversation : StableIdentified, HasInfoString {
 
     val messages: List<Message>
 
@@ -34,13 +37,22 @@ interface Conversation : StableIdentified {
      */
     fun lastMessageMustBeFromUser(): UserMessage? = messages.lastOrNull() as? UserMessage
 
-    fun withMessage(message: Message): Conversation
+    /**
+     * Modify the state of this conversation
+     * This method is mutable, and returns itself only for convenience
+     */
+    fun addMessage(message: Message): Conversation
 
     fun promptContributor(
         conversationFormatter: ConversationFormatter = WindowingConversationFormatter(),
     ) = PromptContributor.dynamic({ "Conversation so far:\n" + conversationFormatter.format(this) })
 
-
+    override fun infoString(
+        verbose: Boolean?,
+        indent: Int,
+    ): String {
+        return promptContributor().contribution()
+    }
 }
 
 /**
@@ -74,27 +86,43 @@ sealed class Message(
  * @param content Content of the message
  * @param name Name of the user, if available
  */
-class UserMessage(
+class UserMessage @JvmOverloads constructor(
     content: String,
     name: String? = null,
     override val timestamp: Instant = Instant.now(),
-) : Message(role = Role.USER, content = content, name = name, timestamp = timestamp)
+) : Message(role = Role.USER, content = content, name = name, timestamp = timestamp) {
+
+    override fun toString(): String {
+        return "UserMessage(from='${sender}', content='${trim(content, 80, 10)}')"
+    }
+}
 
 /**
  * Message sent by the assistant.
  * @param content Content of the message
  * @param name Name of the assistant, if available
  */
-open class AssistantMessage(
+open class AssistantMessage @JvmOverloads constructor(
     content: String,
     name: String? = null,
     override val timestamp: Instant = Instant.now(),
-) : Message(role = Role.ASSISTANT, content = content, name = name, timestamp = timestamp)
+) : Message(role = Role.ASSISTANT, content = content, name = name, timestamp = timestamp) {
 
-class SystemMessage(
+    override fun toString(): String {
+        return "AssistantMessage(from='${sender}', content='${trim(content, 80, 10)}')"
+    }
+}
+
+class SystemMessage @JvmOverloads constructor(
     content: String,
     override val timestamp: Instant = Instant.now(),
-) : Message(role = Role.SYSTEM, content = content, name = null, timestamp = timestamp)
+) : Message(role = Role.SYSTEM, content = content, name = null, timestamp = timestamp) {
+
+    override fun toString(): String {
+        return "SystemMessage(content='${trim(content, 80, 10)}')"
+    }
+
+}
 
 /**
  * Assistant message resulting from an agentic execution

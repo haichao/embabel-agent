@@ -21,7 +21,7 @@ import com.embabel.agent.core.*
 import com.embabel.agent.domain.io.UserInput
 import com.embabel.agent.event.logging.LoggingPersonality
 import com.embabel.agent.event.logging.personality.ColorPalette
-import com.embabel.agent.rag.Ingester
+import com.embabel.agent.rag.ingestion.Ingester
 import com.embabel.agent.shell.config.ShellProperties
 import com.embabel.chat.agent.*
 import com.embabel.chat.agent.shell.TerminalServicesProcessWaitingHandler
@@ -125,14 +125,14 @@ class ShellCommands(
         )
         blackboard = processOptions.blackboard
 
+        val goalChoiceApprover =
+            if (shellProperties.chat.confirmGoals) terminalServices else GoalChoiceApprover.APPROVE_ALL
+
         val chatSession = AgentPlatformChatSession(
-            messageListener = { },
-            autonomy = autonomy,
+            user = null,
             planLister = planLister,
             processOptions = processOptions,
-            goalChoiceApprover = if (shellProperties.chat.confirmGoals) terminalServices else GoalChoiceApprover.APPROVE_ALL,
-            processWaitingHandler = TerminalServicesProcessWaitingHandler(terminalServices),
-            chatConfig = shellProperties.chat,
+            outputChannel = terminalServices.outputChannel(),
             responseGenerator = if (shellProperties.chat.bindConversation) AgentResponseGenerator(
                 agentPlatform = agentPlatform,
                 agent = DefaultChatAgentBuilder(
@@ -142,9 +142,14 @@ class ShellCommands(
                         .withModel(shellProperties.chat.model)
                         .withTemperature(null)
                 ).build()
-            ) else null,
+            ) else AutonomyResponseGenerator(
+                autonomy = autonomy,
+                goalChoiceApprover = goalChoiceApprover,
+                processWaitingHandler = TerminalServicesProcessWaitingHandler(terminalServices),
+                chatConfig = shellProperties.chat,
+            ),
         )
-        return terminalServices.chat(chatSession, colorPalette)
+        return terminalServices.chat(chatSession = chatSession, welcome = null, colorPalette = colorPalette)
     }
 
     @ShellMethod("List agents")
@@ -155,15 +160,16 @@ class ShellCommands(
                     it.infoString(verbose = true, indent = 1)
                 }
         }"
-        return detail + "\n\nTLDR;\n${agentPlatform.agents().joinToString("\n") { "${it.name}: ${it.description}" }}"
+        return detail + "\n\nTL;DR\n${agentPlatform.agents().joinToString("\n") { "${it.name}: ${it.description}" }}"
     }
 
     @ShellMethod("List actions")
     fun actions(): String {
-        return "${"Actions:".bold()}\n${
+        val detail = "${"Actions:".bold()}\n${
             agentPlatform.actions
                 .joinToString(separator = "\n") { it.infoString(verbose = true, indent = 1) }
         }"
+        return detail + "\n\nTL;DR\n${agentPlatform.actions.joinToString("\n") { "${it.name}: ${it.description}" }}"
     }
 
     @ShellMethod("List conditions")
@@ -242,10 +248,6 @@ class ShellCommands(
     @ShellMethod("List available models")
     fun models(): String =
         modelProvider.infoString(true)
-
-    @ShellMethod("List available rag services")
-    fun ragService(): String =
-        autonomy.agentPlatform.platformServices.ragService.infoString(verbose = true)
 
     @ShellMethod("ingest")
     fun ingest(

@@ -22,8 +22,8 @@ import com.embabel.agent.core.last
 import com.embabel.agent.testing.integration.IntegrationTestUtils.dummyAgentPlatform
 import com.embabel.chat.AssistantMessage
 import com.embabel.chat.Conversation
-import com.embabel.chat.InMemoryConversation
 import com.embabel.chat.UserMessage
+import com.embabel.chat.support.InMemoryConversation
 import com.embabel.common.ai.model.LlmOptions
 import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -55,7 +55,7 @@ class DefaultChatAgentBuilderTest {
         )
         val chatAgent = cab.build()
         val m = UserMessage("Hello")
-        val conversation = InMemoryConversation(messages = listOf(m))
+        val conversation = InMemoryConversation.of(messages = listOf(m))
         val agentProcess = agentPlatform.runAgentFrom(
             agent = chatAgent,
             processOptions = ProcessOptions(),

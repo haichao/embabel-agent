@@ -16,10 +16,11 @@
 package com.embabel.agent.shell
 
 import com.embabel.agent.api.common.autonomy.*
+import com.embabel.agent.channel.*
 import com.embabel.agent.core.hitl.*
 import com.embabel.agent.event.logging.personality.ColorPalette
+import com.embabel.agent.event.logging.personality.DefaultColorPalette
 import com.embabel.agent.shell.config.ShellProperties
-import com.embabel.chat.AgenticResultAssistantMessage
 import com.embabel.chat.ChatSession
 import com.embabel.chat.UserMessage
 import com.embabel.common.util.AnsiColor
@@ -28,10 +29,11 @@ import com.embabel.common.util.loggerFor
 import com.embabel.ux.form.Button
 import com.embabel.ux.form.FormSubmission
 import com.embabel.ux.form.TextField
-import com.fasterxml.jackson.databind.ObjectMapper
+import org.apache.commons.text.WordUtils
 import org.jline.reader.LineReader
 import org.jline.reader.LineReaderBuilder
 import org.jline.terminal.Terminal
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
 /**
@@ -40,9 +42,9 @@ import org.springframework.stereotype.Component
 @Component
 class TerminalServices(
     private val terminal: Terminal,
-    private val objectMapper: ObjectMapper,
     private val shellProperties: ShellProperties,
 ) : GoalChoiceApprover {
+
     /**
      * Get further input
      */
@@ -59,16 +61,19 @@ class TerminalServices(
         doWithLineReader { it.printAbove(what) }
     }
 
+    @JvmOverloads
     fun chat(
         chatSession: ChatSession,
-        colorPalette: ColorPalette,
+        welcome: String? = null,
+        colorPalette: ColorPalette = DefaultColorPalette(),
     ): String {
         val lineReader = LineReaderBuilder.builder()
             .terminal(terminal)
             .build()
         lineReader.printAbove(
-            """
-            Chat session started. Type 'exit' to end the session.
+            (welcome?.let { it + "\n" } ?: "") +
+                    """
+            Chat session ${chatSession.conversation.id} started. Type 'exit' to end the session.
             Type /help for available commands.
             """.trimIndent().color(colorPalette.highlight)
         )
@@ -78,24 +83,7 @@ class TerminalServices(
                 break
             }
             val userMessage = UserMessage(userInput)
-            chatSession.respond(userMessage) { message ->
-                when (message) {
-                    is UserMessage -> error("User message should not be sent by the assistant")
-                    is AgenticResultAssistantMessage -> {
-                        val formatted = formatProcessOutput(
-                            result = message.agentProcessExecution,
-                            colorPalette = colorPalette,
-                            objectMapper = objectMapper,
-                            lineLength = shellProperties.lineLength,
-                        )
-                        lineReader.printAbove("${message.sender}:\n$formatted")
-                    }
-
-                    else -> {
-                        lineReader.printAbove("${message.sender}: ${message.content.color(colorPalette.color2)}")
-                    }
-                }
-            }
+            chatSession.onUserMessage(userMessage)
         }
 
         return "Conversation finished"
@@ -229,6 +217,39 @@ class TerminalServices(
             )
         }
 
+    }
+
+    fun outputChannel(): OutputChannel = TerminalOutputChannel()
+
+    inner class TerminalOutputChannel(
+        private val colorPalette: ColorPalette = DefaultColorPalette(),
+    ) : OutputChannel {
+
+        private val logger = LoggerFactory.getLogger(javaClass)
+
+        override fun send(event: OutputChannelEvent) {
+            when (event) {
+                is MessageOutputChannelEvent -> {
+                    val formattedResponse = WordUtils.wrap(
+                        "${event.message.sender}: ${event.message.content.color(colorPalette.color2)}",
+                        shellProperties.lineLength,
+                    )
+                    println(formattedResponse)
+                }
+
+                is ContentOutputChannelEvent -> {
+                    println("Content event: ${event.content}")
+                }
+
+                is ProgressOutputChannelEvent -> {
+                    println("Progress update: ${event.message}")
+                }
+
+                else -> {
+                    println(event.toString())
+                }
+            }
+        }
     }
 
 }

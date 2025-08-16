@@ -186,6 +186,7 @@ class AgentMetadataReader(
                 actions = actions,
                 goals = goals.toSet(),
                 stuckHandler = instance as? StuckHandler,
+                opaque = agenticInfo.agentAnnotation.opaque,
             )
         } else {
             AgentScope(
@@ -273,6 +274,7 @@ class AgentMetadataReader(
         method: Method,
         instance: Any,
     ): ComputedBooleanCondition {
+        requireNonAmbiguousParameters(method)
         val conditionAnnotation = method.getAnnotation(Condition::class.java)
         return ComputedBooleanCondition(
             name = conditionAnnotation.name.ifBlank {
@@ -308,11 +310,8 @@ class AgentMetadataReader(
                 else -> {
                     val requireNameMatch = parameter.getAnnotation(RequireNameMatch::class.java)
                     val domainTypes = context.agentProcess.agent.jvmTypes.map { it.clazz }
-                    val variable = if (requireNameMatch != null) {
-                        parameter.name
-                    } else {
-                        IoBinding.DEFAULT_BINDING
-                    }
+                    val variable = getBindingParameterName(parameter.name, requireNameMatch)
+                        ?: error("Parameter name should be available")
                     args += context.getValue(
                         variable = variable,
                         type = parameter.type.name,
@@ -344,6 +343,7 @@ class AgentMetadataReader(
             }
         }
         return try {
+            method.trySetAccessible()
             val evaluationResult = ReflectionUtils.invokeMethod(method, instance, *args.toTypedArray()) as Boolean
             logger.debug(
                 "Condition evaluated to {}, calling {} on {} using args {}",

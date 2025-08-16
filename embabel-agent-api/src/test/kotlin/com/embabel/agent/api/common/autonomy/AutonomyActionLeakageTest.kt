@@ -15,10 +15,12 @@
  */
 package com.embabel.agent.api.common.autonomy
 
+import com.embabel.agent.config.AgentPlatformProperties
 import com.embabel.agent.core.*
 import com.embabel.agent.domain.io.UserInput
 import com.embabel.agent.testing.integration.IntegrationTestUtils
 import com.embabel.agent.testing.integration.RandomRanker
+import com.embabel.agent.testing.integration.forAutonomyTesting
 import com.embabel.common.core.types.ZeroToOne
 import com.embabel.common.util.indent
 import com.embabel.plan.goap.ConditionDetermination
@@ -156,7 +158,6 @@ class AutonomyActionLeakageTest {
 
             override fun execute(
                 processContext: ProcessContext,
-                action: Action,
             ): ActionStatus {
                 return ActionStatus(runningTime = Duration.ofSeconds(2), status = ActionStatusCode.SUCCEEDED)
             }
@@ -202,7 +203,6 @@ class AutonomyActionLeakageTest {
 
             override fun execute(
                 processContext: ProcessContext,
-                action: Action,
             ): ActionStatus {
                 return ActionStatus(runningTime = Duration.ofSeconds(2), status = ActionStatusCode.SUCCEEDED)
             }
@@ -238,7 +238,7 @@ class AutonomyActionLeakageTest {
         val autonomy = Autonomy(
             agentPlatform = agentPlatform,
             ranker = ranker,
-            properties = AutonomyProperties()
+            properties = forAutonomyTesting()
         )
 
         // Create test user input
@@ -388,7 +388,7 @@ class AutonomyActionLeakageTest {
         val autonomy = Autonomy(
             agentPlatform = agentPlatform,
             ranker = RandomRanker(),
-            properties = AutonomyProperties()
+            properties = forAutonomyTesting()
         )
 
         // Create user input
@@ -446,7 +446,6 @@ class AutonomyActionLeakageTest {
 
             override fun execute(
                 processContext: ProcessContext,
-                action: Action,
             ): ActionStatus {
                 return ActionStatus(runningTime = Duration.ofSeconds(2), status = ActionStatusCode.SUCCEEDED)
             }

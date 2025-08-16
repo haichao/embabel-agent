@@ -70,12 +70,12 @@ abstract class AbstractAgentProcess(
     override val goal: com.embabel.plan.Goal? get() = _goal
 
     override val processContext = ProcessContext(
-        platformServices = platformServices.copy(
-            eventListener = AgenticEventListener.of(platformServices.eventListener, agenticEventListenerToolsStats),
+        platformServices = platformServices.withEventListener(
+            agenticEventListenerToolsStats,
         ),
         agentProcess = this,
         processOptions = processOptions,
-        outputChannel = platformServices.outputChannel,
+        outputChannel = platformServices.outputChannel + processOptions.outputChannel,
     )
 
     /**
@@ -340,7 +340,6 @@ abstract class AbstractAgentProcess(
         val actionStatus = action.qos.retryTemplate("Action-${action.name}").execute<ActionStatus, Throwable> {
             action.execute(
                 processContext = processContext,
-                action = action,
             )
         }
         val runningTime = Duration.between(timestamp, Instant.now())

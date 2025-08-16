@@ -15,12 +15,47 @@
  */
 package com.embabel.agent.api.common
 
+import com.embabel.agent.core.LlmVerbosity
+import com.embabel.agent.core.ProcessOptions
+import com.embabel.agent.rag.RagService
 import com.embabel.common.ai.model.*
+import org.springframework.ai.embedding.EmbeddingModel
+
+typealias Embedding = FloatArray
+
 
 /**
  * Gateway to AI functionality in the context of an operation.
+ * This includes both LLM and embedding models.
  */
 interface Ai {
+
+    /**
+     * Return an embedding model with the given name
+     */
+    fun withEmbeddingModel(model: String): EmbeddingModel =
+        withEmbeddingModel(ModelSelectionCriteria.byName(model))
+
+    /**
+     * Return an embedding model matching the given criteria.
+     */
+    fun withEmbeddingModel(criteria: ModelSelectionCriteria): EmbeddingModel
+
+    fun withDefaultEmbeddingModel(): EmbeddingModel =
+        withEmbeddingModel(DefaultModelSelectionCriteria)
+
+    /**
+     * Return the default RagService, appropriately configured for this context
+     */
+    fun rag(): RagService = rag(null)
+
+    /**
+     * Return the RagService for the given service name
+     * appropriately configured for this context,
+     * or throw an exception if not found.
+     * @param service the service name, or null for default
+     */
+    fun rag(service: String?): RagService
 
     /**
      * Get a configurable PromptRunner for this context using
@@ -67,4 +102,23 @@ interface Ai {
     fun withFirstAvailableLlmOf(vararg llms: String): PromptRunner {
         return withLlm(LlmOptions(criteria = FallbackByNameModelSelectionCriteria(llms.toList())))
     }
+}
+
+/**
+ * Builder that can be injected into components
+ * to obtain Ai instances.
+ * Use when you want custom configuration.
+ */
+interface AiBuilder : LlmVerbosity {
+
+    /**
+     * Build an Ai instance according to the configuration.
+     */
+    fun ai(): Ai
+
+    fun withProcessOptions(options: ProcessOptions): AiBuilder
+
+    fun withShowPrompts(show: Boolean): AiBuilder
+
+    fun withShowLlmResponses(show: Boolean): AiBuilder
 }

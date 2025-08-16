@@ -35,3 +35,28 @@ interface AgentSystemStep : GoapStep, NamedAndDescribed, Operation {
     val inputs: Set<IoBinding>
 
 }
+
+/**
+ * Step that takes data as input and produces data as output.
+ */
+interface DataFlowStep : AgentSystemStep {
+
+    /**
+     * Expected data outputs of the step.
+     */
+    val outputs: Set<IoBinding>
+
+}
+
+/**
+ * Access to agent infrastructure via injected parameter.
+ */
+interface InjectedType : Operation {
+
+    companion object {
+        fun named(name: String): InjectedType = object : InjectedType {
+            override val name: String = name
+        }
+    }
+
+}
