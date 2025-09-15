@@ -16,12 +16,13 @@
 package com.embabel.chat.agent
 
 import com.embabel.agent.api.common.autonomy.*
+import com.embabel.agent.channel.MessageOutputChannelEvent
+import com.embabel.agent.channel.OutputChannel
 import com.embabel.agent.core.ProcessOptions
 import com.embabel.agent.domain.io.UserInput
 import com.embabel.chat.AgenticResultAssistantMessage
 import com.embabel.chat.AssistantMessage
 import com.embabel.chat.Conversation
-import com.embabel.chat.MessageListener
 
 /**
  * Respond to messages by choosing and executing goals using Autonomy.
@@ -37,13 +38,16 @@ class AutonomyResponseGenerator(
     override fun generateResponses(
         conversation: Conversation,
         processOptions: ProcessOptions,
-        messageListener: MessageListener,
+        outputChannel: OutputChannel,
     ) {
         val userMessage = conversation.lastMessageMustBeFromUser()
         if (userMessage == null) {
-            messageListener.onMessage(
-                AssistantMessage(
-                    content = "I'm not sure what to respond to",
+            outputChannel.send(
+                MessageOutputChannelEvent(
+                    "TODO right process id",
+                    AssistantMessage(
+                        content = "I'm not sure what to respond to",
+                    ),
                 )
             )
             return
@@ -68,30 +72,44 @@ class AutonomyResponseGenerator(
             val result = dynamicExecutionResult.output
             // Bind the result to the blackboard.
             dynamicExecutionResult.agentProcess += result
-            messageListener.onMessage(
-                AgenticResultAssistantMessage(
-                    agentProcessExecution = dynamicExecutionResult,
-                    content = result.toString(),
+            outputChannel.send(
+                MessageOutputChannelEvent(
+                    dynamicExecutionResult.agentProcess.id,
+                    AgenticResultAssistantMessage(
+                        agentProcessExecution = dynamicExecutionResult,
+                        content = result.toString(),
+                    )
                 )
             )
         } catch (pwe: ProcessWaitingException) {
             val assistantMessage = processWaitingHandler.handleProcessWaitingException(pwe, userMessage.content)
-            messageListener.onMessage(assistantMessage)
+            outputChannel.send(
+                MessageOutputChannelEvent(
+                    pwe.agentProcess.id,
+                    assistantMessage,
+                )
+            )
         } catch (_: NoGoalFound) {
-            messageListener.onMessage(
-                AssistantMessage(
-                    content = """|
+            outputChannel.send(
+                MessageOutputChannelEvent(
+                    "no process",
+                    AssistantMessage(
+                        content = """|
                     |I'm sorry Dave. I'm afraid I can't do that.
                     |
                     |Things I CAN do:
                     |${autonomy.agentPlatform.goals.joinToString("\n") { "- ${it.description}" }}
                 """.trimMargin(),
+                    )
                 )
             )
         } catch (_: GoalNotApproved) {
-            messageListener.onMessage(
-                AssistantMessage(
-                    content = "I obey. That action will not be executed.",
+            outputChannel.send(
+                MessageOutputChannelEvent(
+                    "no process",
+                    AssistantMessage(
+                        content = "I obey. That action will not be executed.",
+                    )
                 )
             )
         }

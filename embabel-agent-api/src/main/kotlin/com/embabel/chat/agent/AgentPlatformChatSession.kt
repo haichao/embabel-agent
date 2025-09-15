@@ -15,10 +15,9 @@
  */
 package com.embabel.chat.agent
 
-import com.embabel.agent.api.common.autonomy.Autonomy
-import com.embabel.agent.api.common.autonomy.GoalChoiceApprover
 import com.embabel.agent.api.common.autonomy.PlanLister
 import com.embabel.agent.api.common.autonomy.ProcessWaitingException
+import com.embabel.agent.channel.OutputChannel
 import com.embabel.agent.config.models.OpenAiModels
 import com.embabel.agent.core.Blackboard
 import com.embabel.agent.core.Goal
@@ -28,7 +27,10 @@ import com.embabel.agent.domain.io.UserInput
 import com.embabel.agent.event.AgentProcessEvent
 import com.embabel.agent.event.AgenticEventListener
 import com.embabel.agent.event.ObjectBindingEvent
+import com.embabel.agent.identity.User
 import com.embabel.chat.*
+import com.embabel.chat.support.InMemoryConversation
+import com.embabel.common.ai.model.LlmOptions
 import com.embabel.common.util.loggerFor
 
 
@@ -43,7 +45,15 @@ data class ChatConfig(
     val multiGoal: Boolean = false,
     val model: String = OpenAiModels.GPT_41_MINI,
     val temperature: Double? = null,
-)
+) {
+
+    /**
+     * Options for the LLM used in the chat session
+     */
+    val llm: LlmOptions = LlmOptions
+        .withModel(model)
+        .withTemperature(temperature)
+}
 
 /**
  * Generates response(s) in a chat session.
@@ -52,14 +62,14 @@ interface ResponseGenerator {
 
     /**
      * Generate response(s) in this conversation
-     * @param conversation Current conversation state, including new message
+     * @param conversation Current conversation state, hopefully including new message
+     * from the user
      * @param processOptions Options for the process, including blackboard
-     * @param messageListener Listener to send created messages to
      */
     fun generateResponses(
         conversation: Conversation,
         processOptions: ProcessOptions,
-        messageListener: MessageListener,
+        outputChannel: OutputChannel,
     )
 }
 
@@ -76,51 +86,29 @@ interface ProcessWaitingHandler {
 
 /**
  * Support for chat sessions leveraging an AgentPlatform.
- * Uses last message as intent and delegates handling to agent platform.
- * Uses ProcessWaitingHandler to handle process waiting exceptions.
  */
 class AgentPlatformChatSession(
-    private val autonomy: Autonomy,
+    override val user: User?,
+    override val outputChannel: OutputChannel,
     private val planLister: PlanLister,
-    private val goalChoiceApprover: GoalChoiceApprover,
     val processOptions: ProcessOptions = ProcessOptions(),
-    val processWaitingHandler: ProcessWaitingHandler,
-    override val messageListener: MessageListener = MessageListener {},
-    val chatConfig: ChatConfig = ChatConfig(),
-    responseGenerator: ResponseGenerator? = null,
+    val responseGenerator: ResponseGenerator,
+    override val conversation: Conversation = InMemoryConversation(),
 ) : ChatSession {
-
-    private val responseGeneratorToUse = responseGenerator ?: AutonomyResponseGenerator(
-        autonomy = autonomy,
-        goalChoiceApprover = goalChoiceApprover,
-        processWaitingHandler = processWaitingHandler,
-        chatConfig = chatConfig,
-    )
-
-    private var internalConversation: Conversation = InMemoryConversation()
 
     private val blackboard: Blackboard = processOptions.blackboard ?: InMemoryBlackboard()
 
-    override val conversation: Conversation
-        get() = internalConversation
-
-    override fun respond(
+    override fun onUserMessage(
         userMessage: UserMessage,
-        additionalListener: MessageListener?,
     ) {
-        internalConversation = conversation.withMessage(userMessage)
-        generateResponses(userMessage = userMessage, messageListener = { message ->
-            messageListener.onMessage(message)
-            additionalListener?.onMessage(message)
-        })
+        conversation.addMessage(userMessage)
+        generateResponses(userMessage = userMessage)
     }
-
 
     private fun generateResponses(
         userMessage: UserMessage,
-        messageListener: MessageListener,
     ) {
-        // TODO this be generic with subprocesses?
+        // TODO could this be generic with subprocesses?
         val outerBindingListener = object : AgenticEventListener {
             override fun onProcessEvent(event: AgentProcessEvent) {
                 if (event is ObjectBindingEvent) {
@@ -146,19 +134,19 @@ class AgentPlatformChatSession(
         }
         val handledCommand = handleAsCommand(userMessage)
         if (handledCommand != null) {
-            messageListener.onMessage(handledCommand)
+            TODO("handle diagnostic messages")
+//            outputChannel.onMessage(handledCommand, conversation)
         } else {
-            responseGeneratorToUse.generateResponses(
+            responseGenerator.generateResponses(
                 conversation = conversation,
                 processOptions = processOptions.copy(
                     blackboard = blackboard,
                     listeners = listOf(outerBindingListener),
                 ),
-                messageListener = messageListener
+                outputChannel = outputChannel,
             )
         }
     }
-
 
     private fun handleAsCommand(message: UserMessage): AssistantMessage? {
         return parseSlashCommand(message.content)?.let { (command, args) ->

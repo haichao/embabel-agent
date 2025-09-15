@@ -23,6 +23,7 @@ import com.embabel.agent.spi.LlmCall
 import com.embabel.agent.spi.LlmInteraction
 import com.embabel.agent.spi.ToolDecorator
 import com.embabel.agent.spi.support.LlmDataBindingProperties
+import com.embabel.agent.spi.support.LlmOperationsPromptsProperties
 import com.embabel.chat.Message
 import com.embabel.common.ai.model.Llm
 import com.embabel.common.ai.model.ModelProvider
@@ -31,6 +32,7 @@ import com.fasterxml.jackson.databind.DatabindException
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import jakarta.annotation.PostConstruct
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.client.ResponseEntity
 import org.springframework.ai.chat.messages.SystemMessage
@@ -38,7 +40,7 @@ import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.converter.BeanOutputConverter
-import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.context.ApplicationContext
 import org.springframework.core.ParameterizedTypeReference
 import org.springframework.retry.support.RetrySynchronizationManager
 import org.springframework.stereotype.Service
@@ -50,18 +52,7 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
-/**
- * Properties for the ChatClientLlmOperations operations
- * @param maybePromptTemplate template to use for the "maybe" prompt, which
- *  * can enable a failure result if the LLM does not have enough information to
- *  * create the desired output structure.
- */
-@ConfigurationProperties(prefix = "embabel.llm-operations.prompts")
-data class LlmOperationsPromptsProperties(
-    val maybePromptTemplate: String = "maybe_prompt_contribution",
-    val generateExamplesByDefault: Boolean = true,
-    val defaultTimeout: Duration = Duration.ofSeconds(60),
-)
+const val PROMPT_ELEMENT_SEPARATOR = "\n----\n";
 
 /**
  * LlmOperations implementation that uses the Spring AI ChatClient
@@ -75,11 +66,37 @@ internal class ChatClientLlmOperations(
     modelProvider: ModelProvider,
     toolDecorator: ToolDecorator,
     private val templateRenderer: TemplateRenderer,
-    autoLlmSelectionCriteriaResolver: AutoLlmSelectionCriteriaResolver = AutoLlmSelectionCriteriaResolver.DEFAULT,
     private val dataBindingProperties: LlmDataBindingProperties = LlmDataBindingProperties(),
     private val llmOperationsPromptsProperties: LlmOperationsPromptsProperties = LlmOperationsPromptsProperties(),
+    private val applicationContext: ApplicationContext? = null,
+    autoLlmSelectionCriteriaResolver: AutoLlmSelectionCriteriaResolver = AutoLlmSelectionCriteriaResolver.DEFAULT,
     private val objectMapper: ObjectMapper = jacksonObjectMapper().registerModule(JavaTimeModule()),
 ) : AbstractLlmOperations(toolDecorator, modelProvider, autoLlmSelectionCriteriaResolver) {
+
+    @PostConstruct
+    private fun logPropertyConfiguration() {
+        val dataBindingFromContext = applicationContext?.runCatching {
+            getBeansOfType(LlmDataBindingProperties::class.java).values.firstOrNull()
+        }?.getOrNull()
+
+        val promptsFromContext = applicationContext?.runCatching {
+            getBeansOfType(LlmOperationsPromptsProperties::class.java).values.firstOrNull()
+        }?.getOrNull()
+
+        if (dataBindingFromContext === dataBindingProperties) {
+            logger.info("LLM Data Binding: Using Spring-managed properties")
+        } else {
+            logger.warn("LLM Data Binding: Using fallback defaults")
+        }
+
+        if (promptsFromContext === llmOperationsPromptsProperties) {
+            logger.info("LLM Prompts: Using Spring-managed properties")
+        } else {
+            logger.warn("LLM Prompts: Using fallback defaults")
+        }
+
+        logger.info("Current LLM settings: maxAttempts=${dataBindingProperties.maxAttempts}, fixedBackoffMillis=${dataBindingProperties.fixedBackoffMillis}ms, timeout=${llmOperationsPromptsProperties.defaultTimeout.seconds}s")
+    }
 
     @Suppress("UNCHECKED_CAST")
     override fun <O> doTransform(
@@ -91,7 +108,7 @@ internal class ChatClientLlmOperations(
         val llm = chooseLlm(interaction.llm)
         val chatClient = createChatClient(llm)
         val promptContributions =
-            (interaction.promptContributors + llm.promptContributors).joinToString("\n") { it.contribution() }
+            (interaction.promptContributors + llm.promptContributors).joinToString(PROMPT_ELEMENT_SEPARATOR) { it.contribution() }
 
         val springAiPrompt = Prompt(
             buildList {
@@ -168,9 +185,10 @@ internal class ChatClientLlmOperations(
             if (outputClass == String::class.java) {
                 val chatResponse = callResponse.chatResponse()
                 chatResponse?.let { recordUsage(llm, it, llmRequestEvent) }
-                chatResponse!!.result.output.text as O
+                val rawText = chatResponse!!.result.output.text as String
+                stringWithoutThinkBlocks(rawText) as O
             } else {
-                val re = callResponse.responseEntity<O>(
+                val re = callResponse.responseEntity(
                     ExceptionWrappingConverter(
                         expectedType = outputClass,
                         delegate = WithExampleConverter(
@@ -308,7 +326,7 @@ internal class ChatClientLlmOperations(
             }
 
             val responseEntity: ResponseEntity<ChatResponse, MaybeReturn<*>> = callResponse
-                .responseEntity<MaybeReturn<*>>(
+                .responseEntity(
                     ExceptionWrappingConverter(
                         expectedType = MaybeReturn::class.java,
                         delegate = WithExampleConverter(

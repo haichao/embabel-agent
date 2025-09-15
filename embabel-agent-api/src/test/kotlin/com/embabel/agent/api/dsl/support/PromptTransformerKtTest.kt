@@ -19,6 +19,7 @@ import com.embabel.agent.api.dsl.Frog
 import com.embabel.agent.api.dsl.MagicVictim
 import com.embabel.agent.core.*
 import com.embabel.agent.core.support.InMemoryBlackboard
+import com.embabel.chat.Message
 import com.embabel.common.ai.model.LlmOptions
 import io.mockk.every
 import io.mockk.mockk
@@ -65,7 +66,7 @@ class PromptTransformerKtTest {
                     MagicVictim::class.java.name
                 )
             } returns magicVictim
-            val promptSlot = slot<String>()
+            val promptSlot = slot<List<Message>>()
             every {
                 processContext.createObject(
                     capture(promptSlot),
@@ -75,7 +76,7 @@ class PromptTransformerKtTest {
                     transformer
                 )
             } returns frog
-            transformer.execute(processContext, action = transformer)
+            transformer.execute(processContext)
         }
 
         @Test
@@ -112,7 +113,7 @@ class PromptTransformerKtTest {
                 )
             } returns summary
 
-            transformer.execute(processContext = processContext, action = transformer)
+            transformer.execute(processContext = processContext)
 
             verify { processContext.getValue("person", PromptPerson::class.java.name) }
         }
@@ -175,7 +176,7 @@ class PromptTransformerKtTest {
                 )
             } returns Frog(name = "Alice")
 
-            transformer.execute(processContext = processContext, action = transformer)
+            transformer.execute(processContext = processContext)
         }
 
         @Test
@@ -219,7 +220,7 @@ class PromptTransformerKtTest {
                 )
             } returns Frog(name = "Bob")
 
-            transformer.execute(processContext = processContext, action = transformer)
+            transformer.execute(processContext = processContext)
         }
 
         @Test
